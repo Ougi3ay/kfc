@@ -41,6 +41,10 @@ kfc_model/
 
 ```bash
 
+# for local testing
+python -m build
+pip install dist/*.whl
+
 pip install kfc
 
 
