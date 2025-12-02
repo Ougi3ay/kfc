@@ -1,0 +1,6 @@
+pandas
+numpy
+gradientcobra
+xgboost
+scikit-learn
+matplotlib

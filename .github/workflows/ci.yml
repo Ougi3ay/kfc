@@ -1,0 +1,33 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"  # Trigger only on version tags like v1.0.0
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out the code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: "3.9"
+
+    - name: Install build tools
+      run: |
+        pip install build twine
+
+    - name: Build the package
+      run: python -m build
+
+    - name: Publish to PyPI
+      env:
+        TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
+        TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+      run: |
+        twine upload dist/*

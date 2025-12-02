@@ -1,0 +1,26 @@
+[project]
+name = "kfc-model"
+version = "0.0.1"
+description = "A small Python library for a clusterwise supervised learning procedure based on aggregation of distances"
+authors = [ { name = "Your Name", email = "you@example.com" } ]
+readme = "README.md"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+
+[project.urls]
+"Homepage" = "https://example.com"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.poetry.dev-dependencies]
+pytest = "*"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
