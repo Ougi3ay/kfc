@@ -207,9 +207,70 @@ class KFCModel(BaseEstimator):
 
         self.k_step(X_pre)
         self.f_step(X_pre, y_pre)
-        self.c_step(X_agg)
+        
+        # c-step
+        # First: use X_agg to get candidates (sample, M)
+        self.candidate_predict_ = self._predict_candidates(X_agg) 
+
+        # Create combiner if not exists
+        self.combiner = CombinerFactory.create(self.combiner_name, **self.combiner_params)
+        
+        # train 
+        if hasattr(self.combiner, 'fit'):
+            self.combiner.fit(self.candidate_predict_, y_agg)
         return self
 
+    def _predict_candidates(
+        self, X: ArrayLike2D, proba: bool = False
+    ) -> np.ndarray:
+        """Predict using all candidate models."""
+        n_samples = X.shape[0]
+        n_divs = len(self.candidate_models_)
+        if proba:
+            n_classes = self.candidate_models_['BD1']['lm0'].n_classes_
+            result = np.zeros((n_samples, n_classes, n_divs))
+        else:
+            result = np.zeros((n_samples, n_divs))
+
+        for i, (div_name, F_k) in enumerate(self.candidate_models_.items()):
+            kmeans = self.kmeans_models_[div_name]
+            labels = kmeans.predict(X)
+
+            for cluster_idx, lm in F_k.items():
+                cluster_number = int(cluster_idx.replace('lm', ''))
+                mask = (labels == cluster_number)
+                if np.any(mask):
+                    if proba:
+                        result[mask, :, i] = lm.predict_proba(X[mask])
+                    else:
+                        result[mask, i] = lm.predict(X[mask])
+        return result
+
+
+    def predict(self, X: ArrayLike2D) -> ArrayLike1D:
+        """Predict final output for X."""
+        if not self.candidate_models_:
+            raise ValueError("Model is not fitted yet.")
+        
+        if not hasattr(self, "combiner") or self.combiner is None:
+            raise ValueError("Combiner is not fitted. Call fit() first.")
+        
+        candidate_preds = self._predict_candidates(X)
+        final_pred = self.combiner.combine(candidate_preds)
+        return final_pred
+
+    def predict_proba(self, X: ArrayLike2D) -> ArrayLike2D:
+        """Predict probability for classification tasks."""
+        if not self.candidate_models_:
+            raise ValueError("Model is not fitted yet.")
+        
+        if not hasattr(self, "combiner") or self.combiner is None:
+            raise ValueError("Combiner is not fitted. Call fit() first.")
+        
+        all_probas = self._predict_candidates(X, proba=True)
+        return self.combiner.combine_proba(all_probas)
+
+    # Helper function
     def k_step(self, X: ArrayLike2D) -> None:
         """K-step: cluster features using KMeansBregman for each divergence."""
         self.clusters_ = {}
@@ -248,52 +309,3 @@ class KFCModel(BaseEstimator):
             )
             local_model.fit(X, y, labels)
             self.candidate_models_[div_name] = local_model.models_
-
-    def _predict_candidates(
-        self, X: ArrayLike2D, proba: bool = False
-    ) -> np.ndarray:
-        """Predict using all candidate models."""
-        n_samples = X.shape[0]
-        n_divs = len(self.candidate_models_)
-        if proba:
-            n_classes = self.candidate_models_['BD1']['lm0'].n_classes_
-            result = np.zeros((n_samples, n_classes, n_divs))
-        else:
-            result = np.zeros((n_samples, n_divs))
-
-        for i, (div_name, F_k) in enumerate(self.candidate_models_.items()):
-            kmeans = self.kmeans_models_[div_name]
-            labels = kmeans.predict(X)
-
-            for cluster_idx, lm in F_k.items():
-                cluster_number = int(cluster_idx.replace('lm', ''))
-                mask = (labels == cluster_number)
-                if np.any(mask):
-                    if proba:
-                        result[mask, :, i] = lm.predict_proba(X[mask])
-                    else:
-                        result[mask, i] = lm.predict(X[mask])
-        return result
-
-    def c_step(self, X: ArrayLike2D, store_result: bool = True) -> ArrayLike1D:
-        """C-step: combine candidate predictions into final prediction."""
-        all_preds = self._predict_candidates(X, proba=False)
-        self.combiner = CombinerFactory.create(self.combiner_name, **self.combiner_params)
-        combined = self.combiner.combine(all_preds)
-        if store_result:
-            self.combined_predictions_ = combined
-        return combined
-
-    def predict(self, X: ArrayLike2D) -> ArrayLike1D:
-        """Predict final output for X."""
-        if not self.candidate_models_:
-            raise ValueError("Model is not fitted yet.")
-        return self.c_step(X, store_result=False)
-
-    def predict_proba(self, X: ArrayLike2D) -> ArrayLike2D:
-        """Predict probability for classification tasks."""
-        if not self.candidate_models_:
-            raise ValueError("Model is not fitted yet.")
-        all_probas = self._predict_candidates(X, proba=True)
-        self.combiner = CombinerFactory.create(self.combiner_name, **self.combiner_params)
-        return self.combiner.combine_proba(all_probas)

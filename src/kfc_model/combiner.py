@@ -15,6 +15,7 @@ from typing import Dict, Type
 import numpy as np
 from scipy import stats as sp_stats
 from abc import ABC, abstractmethod
+from gradientcobra.gradientcobra import GradientCOBRA
 
 class BaseCombiner(ABC):
     """
@@ -105,30 +106,43 @@ class VotingCombiner(BaseCombiner):
              # Handle older scipy versions
              return mode_result[0].ravel()
 
+class GradientCOBRARegressorCombiner(BaseCombiner):
+    """
+    An advanced combiner based on the Gradient COBRA paper, as
+    cited in the original KFC GitHub repository.
+    This would require fitting the combiner on the predictions.
+    """
 
+    def __init__(self, **cobra_params):
+        """
+        Store all parameters for the underlying GradientCOBRA.
+        """
+        self.cobra_params = cobra_params
+        self.gcobra = None
+        self._is_fit = False
 
-# --- TODO for a full package ---
-# class GradientCOBRARegressorCombiner(BaseCombiner):
-#     """
-#     An advanced combiner based on the Gradient COBRA paper, as
-#     cited in the original KFC GitHub repository.
-#     This would require fitting the combiner on the predictions.
-#     """
-#     def fit(self, X, y):
-#         # This would need access to the candidate predictions on X
-#         # which complicates the BaseKFC API, suggesting the combiner
-#         # might need to be fit *inside* the BaseKFC.fit method.
-#         pass
-#
-#     def combine(self, candidate_predictions):
-#         # ... implementation ...
-#         pass
+    def fit(self, X, y):
+        """Fit"""
+        # create gradient cobra instance
+        self.gcobra = GradientCOBRA(**self.cobra_params)
+
+        # Fit where X_pred = candidate model predictions 
+        self.gcobra.fit(X, y, as_predictions=True)
+        self._is_fit = True
+        return self
+
+    def combine(self, candidate_predictions):
+        if not self._is_fit:
+            raise RuntimeError("GradientCOBRARegressorCombiner must be fit before combine().")
+        
+        return self.gcobra.predict(candidate_predictions)
 
 class CombinerFactory:
     """Factory for creating combiners by name."""
     _registry: Dict[str, Type[BaseCombiner]] = {
         'mean' : MeanCombiner,
-        'voting' : VotingCombiner
+        'voting' : VotingCombiner,
+        "gradientcobra" : GradientCOBRARegressorCombiner
     }
 
     @classmethod
